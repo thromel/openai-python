@@ -18,6 +18,14 @@ from .conflict_resolver import (
 )
 from .compiler import LLMCLCompiler
 from .runtime import LLMCLRuntime
+from .integration import (
+    llmcl_to_contract,
+    llmcl_contract,
+    LLMCLEnabledClient,
+    create_contract_bundle,
+    get_template_contract,
+    LLMCL_TEMPLATES,
+)
 
 __all__ = [
     "LLMCLParser",
@@ -34,4 +42,10 @@ __all__ = [
     "ResolutionStrategy",
     "LLMCLCompiler",
     "LLMCLRuntime",
+    "llmcl_to_contract",
+    "llmcl_contract",
+    "LLMCLEnabledClient",
+    "create_contract_bundle",
+    "get_template_contract",
+    "LLMCL_TEMPLATES",
 ]

@@ -60,11 +60,17 @@ class ExpressionEvaluator:
             'int': int,
             'float': float,
             'bool': bool,
+            'round': round,
             'contains': lambda s, sub: sub in s,
             'startswith': lambda s, prefix: s.startswith(prefix),
             'endswith': lambda s, suffix: s.endswith(suffix),
             'match': self._regex_match,
             'json_valid': self._json_valid,
+            'email_valid': self._email_valid,
+            'url_valid': self._url_valid,
+            'count': self._count,
+            'first': self._first,
+            'last': self._last,
         }
     
     def evaluate(self, expr: ExpressionNode) -> Any:
@@ -121,6 +127,49 @@ class ExpressionEvaluator:
             return True
         except:
             return False
+    
+    def _email_valid(self, text: str) -> bool:
+        """Check if text is a valid email address."""
+        import re
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return bool(re.match(pattern, text))
+    
+    def _url_valid(self, text: str) -> bool:
+        """Check if text is a valid URL."""
+        import re
+        pattern = r'^https?://[^\s/$.?#].[^\s]*$'
+        return bool(re.match(pattern, text))
+    
+    def _count(self, collection: Any, item: Any = None) -> int:
+        """Count occurrences of item in collection or length if no item specified."""
+        if item is None:
+            return len(collection)
+        if isinstance(collection, str):
+            return collection.count(item)
+        return sum(1 for x in collection if x == item)
+    
+    def _first(self, collection: Any, default: Any = None) -> Any:
+        """Get first element of collection."""
+        try:
+            if isinstance(collection, (list, tuple, str)):
+                return collection[0] if collection else default
+            # For iterables
+            return next(iter(collection), default)
+        except:
+            return default
+    
+    def _last(self, collection: Any, default: Any = None) -> Any:
+        """Get last element of collection."""
+        try:
+            if isinstance(collection, (list, tuple, str)):
+                return collection[-1] if collection else default
+            # For iterables, we need to consume it
+            item = default
+            for item in collection:
+                pass
+            return item
+        except:
+            return default
 
 
 class LLMCLCompiler(ASTVisitor):

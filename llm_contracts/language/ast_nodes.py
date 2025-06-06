@@ -36,12 +36,12 @@ class TemporalOperator(Enum):
     WITHIN = auto()         # true within N turns
 
 
-@dataclass
 class ASTNode(ABC):
     """Base class for all AST nodes."""
-    line: int = 0
-    column: int = 0
-    source_file: Optional[str] = None
+    def __init__(self, line: int = 0, column: int = 0, source_file: Optional[str] = None):
+        self.line = line
+        self.column = column
+        self.source_file = source_file
     
     @abstractmethod
     def accept(self, visitor: "ASTVisitor") -> Any:
@@ -61,6 +61,12 @@ class ContractNode(ASTNode):
     temporal: List["TemporalNode"] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
     imports: List["ImportNode"] = field(default_factory=list)
+    line: int = 0
+    column: int = 0
+    source_file: Optional[str] = None
+    
+    def __post_init__(self):
+        super().__init__(self.line, self.column, self.source_file)
     
     def accept(self, visitor: "ASTVisitor") -> Any:
         return visitor.visit_contract(self)

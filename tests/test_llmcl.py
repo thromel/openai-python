@@ -125,6 +125,30 @@ class TestLLMCLParser:
         
         assert len(ast.requires) == 1
         assert len(ast.ensures) == 1
+    
+    def test_parse_new_builtin_functions(self):
+        """Test parsing new built-in functions."""
+        source = """
+        contract BuiltinFunctionsContract {
+            require email_valid(context.email) 
+                message: "Invalid email address"
+            
+            require url_valid(context.url)
+                message: "Invalid URL"
+            
+            ensure count(response, "error") == 0
+                message: "Response should not contain errors"
+            
+            ensure first(context.items) != last(context.items)
+                message: "First and last items should be different"
+        }
+        """
+        
+        parser = LLMCLParser()
+        ast = parser.parse(source)
+        
+        assert len(ast.requires) == 2
+        assert len(ast.ensures) == 2
 
 
 class TestLLMCLCompiler:
@@ -155,6 +179,69 @@ class TestLLMCLCompiler:
         # Invalid case - response too long
         long_response = "x" * 101
         result = await contract.validate(long_response, {"content": "Hello"})
+        assert not result.is_valid
+    
+    @pytest.mark.asyncio
+    async def test_compile_new_builtin_functions(self):
+        """Test compiling contract with new built-in functions."""
+        source = """
+        contract ValidationContract {
+            require email_valid(email)
+                message: "Invalid email address"
+            
+            require url_valid(url)  
+                message: "Invalid URL"
+                
+            ensure round(score, 2) >= 0.95
+                message: "Score must be at least 0.95"
+                
+            ensure count(response, "error") == 0
+                message: "Response should not contain errors"
+                
+            ensure first(words) == "Hello"
+                message: "Response must start with Hello"
+                
+            ensure last(words) == "goodbye"
+                message: "Response must end with goodbye"
+        }
+        """
+        
+        compiler = LLMCLCompiler()
+        compiled = compiler.compile(source)
+        contract = compiled.contract_instance
+        
+        # Test valid case
+        context = {
+            "email": "test@example.com",
+            "url": "https://example.com",
+            "score": 0.9567,
+            "words": ["Hello", "world", "goodbye"]
+        }
+        result = await contract.validate("This is a clean response", context)
+        assert result.is_valid
+        
+        # Test invalid email
+        context["email"] = "invalid-email"
+        result = await contract.validate("This is a clean response", context)
+        assert not result.is_valid
+        assert "Invalid email" in result.message
+        
+        # Test invalid URL
+        context["email"] = "test@example.com"
+        context["url"] = "not-a-url"
+        result = await contract.validate("This is a clean response", context)
+        assert not result.is_valid
+        assert "Invalid URL" in result.message
+        
+        # Test count function
+        context["url"] = "https://example.com"
+        result = await contract.validate("This has an error in it", context)
+        assert not result.is_valid
+        assert "should not contain errors" in result.message
+        
+        # Test first/last functions
+        context["words"] = ["Goodbye", "world", "hello"]
+        result = await contract.validate("This is a clean response", context)
         assert not result.is_valid
     
     @pytest.mark.asyncio
@@ -455,6 +542,106 @@ class TestLLMCLExamples:
         invalid_response = '{"incomplete": true}'
         result = await runtime.validate(invalid_response, "api_context")
         assert not result.is_valid
+
+
+class TestLLMCLIntegration:
+    """Test LLMCL integration helpers."""
+    
+    def test_llmcl_to_contract(self):
+        """Test converting LLMCL to contract."""
+        from llm_contracts.language import llmcl_to_contract
+        
+        source = """
+        contract TestContract {
+            ensure len(response) > 0
+        }
+        """
+        
+        contract = llmcl_to_contract(source)
+        assert contract.name == "TestContract"
+        assert contract.description == "Compiled from LLMCL: TestContract"
+    
+    @pytest.mark.asyncio
+    async def test_llmcl_decorator(self):
+        """Test LLMCL decorator."""
+        from llm_contracts.language import llmcl_contract
+        
+        @llmcl_contract("""
+            contract DecoratorTest {
+                require len(prompt) > 0
+                    message: "Prompt cannot be empty"
+                ensure len(result) < 100
+                    message: "Result too long"
+            }
+        """)
+        async def process_prompt(prompt: str) -> str:
+            return f"Processed: {prompt}"
+        
+        # Valid case
+        result = await process_prompt("Hello")
+        assert result == "Processed: Hello"
+        
+        # Invalid precondition
+        with pytest.raises(ValueError, match="Prompt cannot be empty"):
+            await process_prompt("")
+        
+        # Invalid postcondition
+        @llmcl_contract("""
+            contract LongResponseTest {
+                ensure len(result) < 10
+            }
+        """)
+        async def long_response(prompt: str) -> str:
+            return "This is a very long response"
+        
+        with pytest.raises(ValueError, match="Contract postcondition failed"):
+            await long_response("test")
+    
+    def test_create_contract_bundle(self):
+        """Test creating contract bundles."""
+        from llm_contracts.language import create_contract_bundle
+        
+        sources = [
+            'contract C1 { ensure len(response) > 0 }',
+            'contract C2 { ensure json_valid(response) }'
+        ]
+        
+        contracts = create_contract_bundle(sources)
+        assert len(contracts) == 2
+        assert contracts[0].name == "C1"
+        assert contracts[1].name == "C2"
+    
+    def test_get_template_contract(self):
+        """Test getting template contracts."""
+        from llm_contracts.language import get_template_contract
+        
+        # Valid template
+        contract = get_template_contract("safe_chat")
+        assert contract.name == "SafeChat"
+        
+        # Invalid template
+        with pytest.raises(ValueError, match="Unknown template"):
+            get_template_contract("nonexistent")
+    
+    @pytest.mark.asyncio
+    async def test_llmcl_enabled_client(self):
+        """Test LLMCL-enabled client."""
+        from llm_contracts.language import LLMCLEnabledClient
+        from unittest.mock import MagicMock
+        
+        # Mock client
+        client = LLMCLEnabledClient(api_key="test")
+        
+        # Add contract
+        client.add_llmcl_contract("""
+            contract ClientTest {
+                ensure len(response) > 0
+            }
+        """)
+        
+        # Verify contract was added
+        assert len(client.runtime.contracts) == 1
+        assert "ClientTest" in client.runtime.contracts
 
 
 if __name__ == "__main__":

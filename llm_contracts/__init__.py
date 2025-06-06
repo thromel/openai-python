@@ -16,6 +16,7 @@ from .core.exceptions import ContractViolationError, ValidationError, ProviderEr
 from . import providers
 from . import validators
 from . import contracts
+from . import experiments
 
 __all__ = [
     "ContractBase",
@@ -27,4 +28,5 @@ __all__ = [
     "providers",
     "validators",
     "contracts",
+    "experiments",
 ]

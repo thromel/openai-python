@@ -152,121 +152,7 @@ class ContractCircuitBreaker:
         return False
 
 
-class StreamValidationResult:
-    """Result of streaming chunk validation."""
-
-    def __init__(self, should_terminate: bool = False, violation: Optional[Any] = None, partial_results: Optional[List[Any]] = None):
-        self.should_terminate = should_terminate
-        self.violation = violation
-        self.partial_results: List[Any] = partial_results or []
-
-
-class StreamingValidator:
-    """Handles real-time validation during streaming responses."""
-
-    def __init__(self, contracts: List[Any]):
-        self.contracts: List[Any] = contracts
-        self.buffer = ""
-        self.validation_checkpoints: List[Any] = []
-        self.chunk_validators = [c for c in contracts if hasattr(
-            c, 'supports_streaming') and c.supports_streaming]
-        self.final_validators = [c for c in contracts if not (
-            hasattr(c, 'supports_streaming') and c.supports_streaming)]
-
-    async def validate_chunk(self, chunk: str) -> StreamValidationResult:
-        """Validate individual chunk with incremental contracts."""
-        self.buffer += chunk
-
-        results: List[Any] = []
-        for contract in self.chunk_validators:
-            if hasattr(contract, 'should_validate_at_length') and contract.should_validate_at_length(len(self.buffer)):
-                if hasattr(contract, 'validate_partial'):
-                    result = await contract.validate_partial(self.buffer)
-                    results.append(result)
-
-                    if (hasattr(result, 'is_violation') and result.is_violation and
-                            hasattr(result, 'severity') and hasattr(result.severity, 'name') and result.severity.name == 'CRITICAL'):
-                        return StreamValidationResult(
-                            should_terminate=True,
-                            violation=result
-                        )
-
-        return StreamValidationResult(
-            should_terminate=False,
-            partial_results=results
-        )
-
-    async def finalize_validation(self) -> List[Any]:
-        """Validate complete response with all contracts."""
-        final_results: List[Any] = []
-        for contract in self.final_validators:
-            if hasattr(contract, 'validate'):
-                result = await contract.validate(self.buffer) if asyncio.iscoroutinefunction(contract.validate) else contract.validate(self.buffer)
-                final_results.append(result)
-
-        return final_results
-
-
-class StreamWrapper:
-    """Wrapper for streaming responses with real-time validation."""
-
-    def __init__(self, original_stream: Iterator[Any], validator: StreamingValidator):
-        self.original_stream = original_stream
-        self.validator = validator
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        chunk = next(self.original_stream)
-
-        # Extract content from chunk
-        content = ""
-        if hasattr(chunk, 'choices') and chunk.choices and len(chunk.choices) > 0:
-            delta = chunk.choices[0].delta
-            if hasattr(delta, 'content') and delta.content:
-                content = delta.content
-
-        if content:
-            # Note: In a real implementation, we'd want to make this async
-            # For now, we'll skip real-time validation in sync streams
-            pass
-
-        return chunk
-
-
-class AsyncStreamWrapper:
-    """Async wrapper for streaming responses with real-time validation."""
-
-    def __init__(self, original_stream: AsyncIterator[Any], validator: StreamingValidator):
-        self.original_stream = original_stream
-        self.validator = validator
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        chunk = await self.original_stream.__anext__()
-
-        # Extract content from chunk
-        content = ""
-        if hasattr(chunk, 'choices') and chunk.choices and len(chunk.choices) > 0:
-            delta = chunk.choices[0].delta
-            if hasattr(delta, 'content') and delta.content:
-                content = delta.content
-
-        if content:
-            # Validate chunk
-            validation_result = await self.validator.validate_chunk(content)
-
-            if validation_result.should_terminate:
-                raise ContractViolationError(
-                    f"Critical contract violation in stream: {validation_result.violation.message if validation_result.violation and hasattr(validation_result.violation, 'message') else 'Unknown violation'}",
-                    contract_type="streaming",
-                    contract_name="streaming_validation"
-                )
-
-        return chunk
+# Old streaming classes removed - now using the new streaming module
 
 
 class ImprovedOpenAIProvider:
@@ -435,8 +321,13 @@ class ImprovedOpenAIProvider:
                 if kwargs.get('stream', False):
                     stream = self._original_create(**kwargs)
                     if self._provider.output_contracts:
+                        # Use the new streaming validation system
+                        from ..streaming import StreamingValidator, StreamWrapper
                         validator = StreamingValidator(
-                            self._provider.output_contracts)
+                            self._provider.output_contracts,
+                            performance_monitoring=True,
+                            early_termination=True
+                        )
                         return StreamWrapper(stream, validator)
                     return stream
 
@@ -490,8 +381,13 @@ class ImprovedOpenAIProvider:
                 if kwargs.get('stream', False):
                     stream = await self._original_completions.acreate(**kwargs)
                     if self._provider.output_contracts:
+                        # Use the new streaming validation system
+                        from ..streaming import StreamingValidator, AsyncStreamWrapper
                         validator = StreamingValidator(
-                            self._provider.output_contracts)
+                            self._provider.output_contracts,
+                            performance_monitoring=True,
+                            early_termination=True
+                        )
                         return AsyncStreamWrapper(stream, validator)
                     return stream
 

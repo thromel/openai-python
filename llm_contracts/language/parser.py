@@ -79,8 +79,7 @@ class LLMCLParser:
             # Literals
             (r'\d+\.\d+', 'FLOAT'),
             (r'\d+', 'INT'),
-            (r'"([^"\\\\]|\\\\.)*"', 'STRING'),
-            (r"'([^'\\\\]|\\\\.)*'", 'STRING'),
+            (r'"([^"\\\\]|\\\\.)*"|\'([^\'\\\\]|\\\\.)*\'', 'STRING'),
             # Identifiers
             (r'[a-zA-Z_][a-zA-Z0-9_]*', 'IDENTIFIER'),
             # Operators
